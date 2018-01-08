@@ -77,7 +77,30 @@ class SelectorBIC(ModelSelector):
         warnings.filterwarnings("ignore", category=DeprecationWarning)
 
         # TODO implement model selection based on BIC scores
-        raise NotImplementedError
+        #raise NotImplementedError
+
+        best_score = float('inf')
+        best_model = None
+
+        num_features = len(self.X[0])
+        logN = np.log(len(self.X))
+
+        for num_states in range(self.min_n_components, self.max_n_components + 1):
+            try:
+                model = GaussianHMM(n_components=num_states, covariance_type="diag", n_iter=1000, random_state=self.random_state, verbose=False).fit(self.X, self.lengths)
+                logL = model.score(self.X, self.lengths)
+
+                p = num_states * num_states + 2 * num_states * num_features - 1
+                score = -2 * logL + p * logN
+
+            except:
+                continue
+
+            if score < best_score:
+                best_score = score
+                best_model = model
+
+        return best_model
 
 
 class SelectorDIC(ModelSelector):
@@ -94,7 +117,38 @@ class SelectorDIC(ModelSelector):
         warnings.filterwarnings("ignore", category=DeprecationWarning)
 
         # TODO implement model selection based on DIC scores
-        raise NotImplementedError
+        #raise NotImplementedError
+
+        best_score = float('-inf')
+        best_model = None
+
+        M = len((self.words).keys())
+
+        for num_states in range(self.min_n_components, self.max_n_components + 1):
+            try:
+                model = GaussianHMM(n_components=num_states, covariance_type="diag", n_iter=1000, random_state=self.random_state, verbose=False).fit(self.X, self.lengths)
+                logL = model.score(self.X, self.lengths)
+
+            except:
+                logL = float("-inf")
+
+            log_sum = 0
+            for word in self.hwords.keys():
+                ix_word, word_lengths = self.hwords[word]
+
+            try:
+                log_sum += hmm_model.score(ix_word, word_lengths)
+
+            except:
+                log_sum += 0
+
+            score = logL - (1 / (M - 1)) * (log_sum - (0 if logL == float("-inf") else logL))
+
+            if score > best_score:
+                best_score = score
+                best_model = model
+
+        return best_model
 
 
 class SelectorCV(ModelSelector):
@@ -106,4 +160,39 @@ class SelectorCV(ModelSelector):
         warnings.filterwarnings("ignore", category=DeprecationWarning)
 
         # TODO implement model selection using CV
-        raise NotImplementedError
+        #raise NotImplementedError
+
+        best_score = float('-inf')
+        best_model = None
+
+        if len(self.sequences) < 2:
+            return None
+
+        split_method = KFold(n_splits=2)
+
+        for num_states in range(self.min_n_components, self.max_n_components + 1):
+            logL_total = 0
+            counter = 0
+
+            for train_idx, test_idx in split_method.split(self.sequences):
+                X_train, train_length = combine_sequences(train_idx, self.sequences)
+                X_test, test_length = combine_sequences(test_idx, self.sequences)
+
+                try:
+                    model = GaussianHMM(n_components=num_states, covariance_type="diag", n_iter=1000, random_state=self.random_state, verbose=False).fit(X_train, train_length)
+                    logL = model.score(X_test, test_length)
+                    counter += 1
+                except:
+                    logL = 0
+
+                logL_total += logL
+
+            score = float('-inf')
+            if counter != 0:
+                score = logL_total / counter
+
+            if score > best_score:
+                best_score = score
+                best_model = model
+
+        return best_model
